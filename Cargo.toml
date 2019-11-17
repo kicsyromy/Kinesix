@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 libc = "0.2"
+input = "0.4.1"
 
 [dependencies.gtk]
 version = "0.7.0"

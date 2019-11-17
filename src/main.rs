@@ -9,11 +9,21 @@ use gtk::{Application, ApplicationWindow, Button};
 //include!("libkinesix.rs");
 //include!("libkinesix_device.rs");
 
-mod libkinesix_device;
-use libkinesix_device::Device;
+mod libkinesix;
+use libkinesix::KinesixBackend;
+use libkinesix::Device;
+
+fn swipe(dir: libkinesix::SwipeDirection, finger_count: u32) {
+}
+
+fn pinch(t: libkinesix::PinchType, finger_count: u32) {
+}
+
 
 fn main() {
-    let d = Device::new("/dev/input/mouse0", "bla", 7, 3).unwrap();
+    let mut b = KinesixBackend::new(swipe, pinch);
+    let devices = b.get_valid_device_list();
+    println!("{:?}", devices);
 
     let application = Application::new(
         Some("com.github.gtk-rs.examples.basic"),
