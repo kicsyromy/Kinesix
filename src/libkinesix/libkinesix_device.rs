@@ -75,7 +75,7 @@ extern "C" {
     fn lstat(__file: *const libc::c_uchar, __buf: *mut stat) -> libc::c_int;
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Device
 {
     pub id: u32,

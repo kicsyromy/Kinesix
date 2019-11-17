@@ -24,6 +24,8 @@ fn main() {
     let mut b = KinesixBackend::new(swipe, pinch);
     let devices = b.get_valid_device_list();
     println!("{:?}", devices);
+    b.set_active_device(&devices[0]);
+    b.start_polling();
 
     let application = Application::new(
         Some("com.github.gtk-rs.examples.basic"),

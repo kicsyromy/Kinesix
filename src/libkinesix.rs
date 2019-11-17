@@ -17,22 +17,30 @@
  * Author: Romeo Calota
  */
 
-use std::fs;
 use std::str;
-use std::thread;
+
+use std::fs;
 use std::path::Path;
+
+use std::thread;
+use std::sync::mpsc;
+use std::sync::mpsc::Receiver;
+
 use std::os::unix::fs::FileTypeExt;
+use std::os::unix::io::AsRawFd;
 
 use libc;
 
 mod libkinesix_device;
 pub use libkinesix_device::Device;
+use std::time::Duration;
+
+const POLLIN: libc::c_short = 0x1;
 
 #[link(name = "mtdev")]
 #[link(name = "evdev")]
 #[link(name = "wacom")]
 #[link(name = "gudev-1.0")]
-
 extern "C" {
     #[no_mangle]
     fn exit(exit_code: libc::c_int) -> !;
@@ -136,7 +144,7 @@ pub struct KinesixBackend
 
     gesture_type: GestureType,
     input: Input,
-    event_poller_thread: std::thread::JoinHandle<i32>
+    event_poller_thread: Option<std::thread::JoinHandle<()>>
 }
 
 impl KinesixBackend
@@ -150,7 +158,34 @@ impl KinesixBackend
                 pinch_delegate: Box::new(pinch_delegate),
                 gesture_type: GestureType::UNKNOWN,
                 input: Input::new(),
-                event_poller_thread: std::mem::uninitialized()
+                event_poller_thread: None
+            }
+        }
+    }
+
+    fn poll_device_thread(&mut self, cancelation_token: Receiver<bool>) {
+        let mut poller = libc::pollfd {
+            fd: self.input.instance.as_raw_fd(),
+            events: POLLIN,
+            revents: 0
+        };
+
+        loop {
+            let cancelation_requested = cancelation_token.recv_timeout(Duration::new(0, 1000000));
+            if cancelation_requested.is_ok() { if cancelation_requested.unwrap() { break; } }
+
+            unsafe {
+                /* Wait for an event to be ready by polling the internal libinput fd */
+                poll(&mut poller as *mut libc::pollfd, 1, 500);
+            }
+
+            if poller.revents == POLLIN {
+                /* Notify libinput that an event is ready and to add it (hopefully) to the event queue */
+                self.input.instance.dispatch();
+
+                println!("event!!");
+
+                /* TODO: Get the actual event from the queue and send it for processing */
             }
         }
     }
@@ -167,7 +202,7 @@ impl KinesixBackend
         None
     }
 
-    pub fn get_valid_device_list(&mut self) -> &Vec<Device> {
+    pub fn get_valid_device_list(&mut self) -> Vec<Device> {
         if self.valid_device_list.is_empty() {
             let devices = fs::read_dir(DEVICES_PATH).unwrap();
             for device in devices {
@@ -183,7 +218,7 @@ impl KinesixBackend
             }
         }
 
-        &self.valid_device_list
+        self.valid_device_list.to_vec()
     }
 
     pub fn set_active_device(&mut self, device: &Device) {
@@ -207,6 +242,14 @@ impl KinesixBackend
             self.input.active_device = new_device;
             self.active_device = &self.valid_device_list[search_result.ok().unwrap()] as *const Device;
         }
+    }
+
+    pub fn start_polling(&mut self) {
+        let (tx, rx) = mpsc::channel();
+//        self.event_poller_thread = Some(thread::spawn(|| {
+            self.poll_device_thread(rx);
+//        }));
+        tx.send(false);
     }
 }
 
