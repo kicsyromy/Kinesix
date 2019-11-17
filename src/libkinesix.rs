@@ -17,35 +17,22 @@
  * Author: Romeo Calota
  */
 
-use libc;
-use libc::pollfd;
-use libc::nfds_t;
-
-use std::ptr::null;
-use std::ptr::null_mut;
-
-use std::ffi::CStr;
-use std::str;
-
 use std::fs;
-use std::os::unix::fs::FileTypeExt;
+use std::str;
+use std::thread;
 use std::path::Path;
+use std::os::unix::fs::FileTypeExt;
 
-use input::DeviceCapability;
+use libc;
 
 mod libkinesix_device;
 pub use libkinesix_device::Device;
-
-type libinput_device = *mut libc::c_void;
-type libinput = *mut libc::c_void;
-type udev_device = *mut libc::c_void;
-type libinput_event = *mut libc::c_void;
-type libinput_event_gesture = *mut libc::c_void;
 
 #[link(name = "mtdev")]
 #[link(name = "evdev")]
 #[link(name = "wacom")]
 #[link(name = "gudev-1.0")]
+
 extern "C" {
     #[no_mangle]
     fn exit(exit_code: libc::c_int) -> !;
@@ -57,94 +44,13 @@ extern "C" {
     fn close(fd: libc::c_int) -> libc::c_int;
 
     #[no_mangle]
-    fn poll(path: *mut pollfd, nfds: nfds_t, timeout: libc::c_int) -> libc::c_int;
-
-    #[no_mangle]
-    fn udev_device_get_property_value(udev_device: *mut udev_device,
-                                      key: *const libc::c_char)
-                                      -> *const libc::c_char;
-    #[no_mangle]
-    fn libinput_path_remove_device(device: *mut libinput_device);
-
-    #[no_mangle]
-    fn libinput_path_add_device(libinput: *mut libinput,
-                                path: *const libc::c_char)
-                                -> *mut libinput_device;
-    #[no_mangle]
-    fn libinput_path_create_context(interface: *const libinput_interface,
-                                    user_data: *mut libc::c_void)
-                                    -> *mut libinput;
-    #[no_mangle]
-    fn libinput_unref(libinput: *mut libinput) -> *mut libinput;
-
-    #[no_mangle]
-    fn libinput_get_event(libinput: *mut libinput) -> *mut libinput_event;
-
-    #[no_mangle]
-    fn libinput_event_destroy(event: *mut libinput_event);
-
-    #[no_mangle]
-    fn libinput_event_get_gesture_event(event: *mut libinput_event)
-                                        -> *mut libinput_event_gesture;
-    #[no_mangle]
-    fn libinput_event_gesture_get_cancelled(event:
-                                            *mut libinput_event_gesture)
-                                            -> libc::c_int;
-    #[no_mangle]
-    fn libinput_event_gesture_get_finger_count(event:
-                                               *mut libinput_event_gesture)
-                                               -> libc::c_int;
-    #[no_mangle]
-    fn libinput_event_gesture_get_scale(event: *mut libinput_event_gesture)
-                                        -> libc::c_double;
-    #[no_mangle]
-    fn libinput_event_get_type(event: *mut libinput_event) -> libc::c_uint;
-    #[no_mangle]
-    fn libinput_event_gesture_get_dy_unaccelerated(event:
-                                                   *mut libinput_event_gesture)
-                                                   -> libc::c_double;
-    #[no_mangle]
-    fn libinput_event_gesture_get_dx_unaccelerated(event:
-                                                   *mut libinput_event_gesture)
-                                                   -> libc::c_double;
-    #[no_mangle]
-    fn libinput_dispatch(libinput: *mut libinput) -> libc::c_int;
-
-    #[no_mangle]
-    fn libinput_get_fd(libinput: *mut libinput) -> libc::c_int;
-
-    #[no_mangle]
-    fn libinput_device_has_capability(device: *mut libinput_device,
-                                      capability: libc::c_uint)
-                                      -> libc::c_int;
-    #[no_mangle]
-    fn libinput_device_get_udev_device(device: *mut libinput_device)
-                                       -> *mut udev_device;
-    #[no_mangle]
-    fn libinput_device_get_name(device: *mut libinput_device)
-                                -> *const libc::c_char;
-    #[no_mangle]
-    fn libinput_device_get_id_product(device: *mut libinput_device)
-                                      -> libc::c_uint;
-    #[no_mangle]
-    fn libinput_device_get_id_vendor(device: *mut libinput_device)
-                                     -> libc::c_uint;
-}
-
-type LibinputOpenRestricted = unsafe extern "C" fn(_: *const libc::c_char, _: libc::c_int, _: *mut libc::c_void) -> libc::c_int;
-type LibinputCloseRestricted = unsafe extern "C" fn(_: libc::c_int, _: *mut libc::c_void) -> ();
-
-#[derive(Copy, Clone, Debug)]
-#[repr(C)]
-pub struct libinput_interface {
-    pub open_restricted: Option<LibinputOpenRestricted>,
-    pub close_restricted: Option<LibinputCloseRestricted>
+    fn poll(path: *mut libc::pollfd, nfds: libc::nfds_t, timeout: libc::c_int) -> libc::c_int;
 }
 
 #[derive(Debug)]
 pub struct Input {
     pub instance: input::Libinput,
-    pub active_device: *mut libinput_device,
+    pub active_device: Option<input::Device>,
 
     /* The absolute maximum value for swipe velocity */
     /* These help determine swipe direction */
@@ -180,7 +86,7 @@ impl Input {
     pub fn new() -> Input {
         Input {
             instance: input::Libinput::new_from_path(LibInputInterface {}),
-            active_device: null_mut(),
+            active_device: None,
             swipe_x_max: 0.0,
             swipe_y_max: 0.0
         }
@@ -223,27 +129,29 @@ const GESTURE_DELTA: i32 = 10;
 pub struct KinesixBackend
 {
     valid_device_list: Vec<Device>,
-    active_device: *mut Device,
+    active_device: *const Device,
 
     swipe_delegate: Box<dyn FnMut(SwipeDirection, u32)>,
     pinch_delegate: Box<dyn FnMut(PinchType, u32)>,
 
     gesture_type: GestureType,
     input: Input,
-    event_poller_thread: i32
+    event_poller_thread: std::thread::JoinHandle<i32>
 }
 
 impl KinesixBackend
 {
     pub fn new<SwipeDelegate: 'static + FnMut(SwipeDirection, u32), PinchDelegate: 'static + FnMut(PinchType, u32)>(swipe_delegate: SwipeDelegate, pinch_delegate: PinchDelegate) -> KinesixBackend {
-        KinesixBackend {
-            active_device: null_mut(),
-            valid_device_list: Vec::new(),
-            swipe_delegate: Box::new(swipe_delegate),
-            pinch_delegate: Box::new(pinch_delegate),
-            gesture_type: GestureType::UNKNOWN,
-            input: Input::new(),
-            event_poller_thread: -1
+        unsafe {
+            KinesixBackend {
+                active_device: std::ptr::null(),
+                valid_device_list: Vec::new(),
+                swipe_delegate: Box::new(swipe_delegate),
+                pinch_delegate: Box::new(pinch_delegate),
+                gesture_type: GestureType::UNKNOWN,
+                input: Input::new(),
+                event_poller_thread: std::mem::uninitialized()
+            }
         }
     }
 
@@ -277,15 +185,27 @@ impl KinesixBackend
 
         &self.valid_device_list
     }
-}
 
-impl Drop for KinesixBackend {
-    fn drop(&mut self) {
-        if !self.input.active_device.is_null() {
-            unsafe {
-//                libinput_path_remove_device(self.input.active_device);
-//                libinput_unref(self.input.instance);
+    pub fn set_active_device(&mut self, device: &Device) {
+        unsafe {
+            if !self.active_device.is_null() {
+                if (*(self.active_device)).path == device.path { return; }
             }
+        }
+
+        let search_result= self.valid_device_list.binary_search_by(| probe| device.path.cmp(&probe.path));
+        if search_result.is_err() { return; }
+
+        if self.input.active_device.is_some() {
+            let mut active_device = self.input.active_device.take();
+            self.input.active_device = None;
+            self.input.instance.path_remove_device(active_device.unwrap());
+        }
+
+        let new_device = self.input.instance.path_add_device(device.path.as_str());
+        if new_device.is_some() {
+            self.input.active_device = new_device;
+            self.active_device = &self.valid_device_list[search_result.ok().unwrap()] as *const Device;
         }
     }
 }
