@@ -34,6 +34,8 @@ use libc;
 mod libkinesix_device;
 pub use libkinesix_device::Device;
 use std::time::Duration;
+use input::AsRaw;
+use std::borrow::{BorrowMut, Borrow};
 
 const POLLIN: libc::c_short = 0x1;
 
@@ -101,6 +103,20 @@ impl Input {
     }
 }
 
+pub struct EventPollerThread
+{
+    handle: Option<std::thread::JoinHandle<()>>,
+    cancelation_token: mpsc::Sender<bool>,
+    libinput_event_listener: mpsc::Receiver<()>
+}
+
+impl EventPollerThread {
+    fn join(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            handle.join().expect("Failed to join event polling thread");
+        }
+    }
+}
 
 pub enum SwipeDirection
 {
@@ -144,7 +160,8 @@ pub struct KinesixBackend
 
     gesture_type: GestureType,
     input: Input,
-    event_poller_thread: Option<std::thread::JoinHandle<()>>
+
+    event_poller_thread: Option<EventPollerThread>,
 }
 
 impl KinesixBackend
@@ -245,11 +262,53 @@ impl KinesixBackend
     }
 
     pub fn start_polling(&mut self) {
-        let (tx, rx) = mpsc::channel();
-//        self.event_poller_thread = Some(thread::spawn(|| {
-            self.poll_device_thread(rx);
-//        }));
-        tx.send(false);
+        let (cancel_token_sender, cancel_token_receiver) = mpsc::channel();
+        let (libinput_event_listener_sender, libinput_event_listener_receiver) = mpsc::channel();
+        let input_fd = self.input.instance.as_raw_fd();
+
+        self.event_poller_thread = Some(EventPollerThread {
+            handle: Some(std::thread::spawn(move || {
+                let mut poller = libc::pollfd {
+                    fd: input_fd,
+                    events: POLLIN,
+                    revents: 0
+                };
+
+                loop {
+                    let cancelation_requested = cancel_token_receiver.recv_timeout(Duration::new(0, 1000000));
+                    if cancelation_requested.is_ok() { if cancelation_requested.unwrap() { println!("done!"); break; } }
+
+                    unsafe {
+                        /* Wait for an event to be ready by polling the internal libinput fd */
+                        poll(&mut poller as *mut libc::pollfd, 1, 500);
+                    }
+
+                    if poller.revents == POLLIN {
+                        /* Notify main thread that an event is ready and to add it (hopefully) to the event queue */
+                        // self.input.instance.dispatch();
+                        libinput_event_listener_sender.send(()).unwrap();
+                        println!("event!!");
+
+                        /* TODO: Get the actual event from the queue and send it for processing */
+                    }
+                }
+            })),
+            cancelation_token: cancel_token_sender,
+            libinput_event_listener: libinput_event_listener_receiver
+        });
+    }
+
+    pub fn stop_polling(&mut self) {
+        if self.event_poller_thread.is_some() {
+            self.event_poller_thread.as_ref().unwrap().cancelation_token.send(true).unwrap();
+        }
+    }
+}
+
+impl Drop for KinesixBackend {
+    fn drop(&mut self) {
+        self.stop_polling();
+        self.event_poller_thread.as_mut().unwrap().join();
     }
 }
 
