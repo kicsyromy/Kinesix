@@ -36,6 +36,7 @@ pub use libkinesix_device::Device;
 use std::time::Duration;
 use input::AsRaw;
 use std::borrow::{BorrowMut, Borrow};
+use std::future::Future;
 
 const POLLIN: libc::c_short = 0x1;
 
@@ -55,6 +56,10 @@ extern "C" {
 
     #[no_mangle]
     fn poll(path: *mut libc::pollfd, nfds: libc::nfds_t, timeout: libc::c_int) -> libc::c_int;
+
+    #[no_mangle]
+    fn g_timeout_add_full(priority: i32, interval: u32, fun: unsafe extern "C" fn(*mut libc::c_void) -> i32, data: *mut libc::c_void, notify: *mut libc::c_void) -> u32;
+
 }
 
 #[derive(Debug)]
@@ -107,6 +112,7 @@ pub struct EventPollerThread
 {
     handle: Option<std::thread::JoinHandle<()>>,
     cancelation_token: mpsc::Sender<bool>,
+    cancelation_requested: bool,
     libinput_event_listener: mpsc::Receiver<()>
 }
 
@@ -180,33 +186,6 @@ impl KinesixBackend
         }
     }
 
-    fn poll_device_thread(&mut self, cancelation_token: Receiver<bool>) {
-        let mut poller = libc::pollfd {
-            fd: self.input.instance.as_raw_fd(),
-            events: POLLIN,
-            revents: 0
-        };
-
-        loop {
-            let cancelation_requested = cancelation_token.recv_timeout(Duration::new(0, 1000000));
-            if cancelation_requested.is_ok() { if cancelation_requested.unwrap() { break; } }
-
-            unsafe {
-                /* Wait for an event to be ready by polling the internal libinput fd */
-                poll(&mut poller as *mut libc::pollfd, 1, 500);
-            }
-
-            if poller.revents == POLLIN {
-                /* Notify libinput that an event is ready and to add it (hopefully) to the event queue */
-                self.input.instance.dispatch();
-
-                println!("event!!");
-
-                /* TODO: Get the actual event from the queue and send it for processing */
-            }
-        }
-    }
-
     fn create_device(&mut self, device_path: &str) -> Option<Device> {
         let libinput_dev = self.input.instance.path_add_device(device_path);
         if libinput_dev.is_some() {
@@ -261,6 +240,22 @@ impl KinesixBackend
         }
     }
 
+    unsafe extern "C" fn on_event_ready(data: *mut libc::c_void) -> i32 {
+        let self_ = &*(data as *mut KinesixBackend);
+
+        if self_.event_poller_thread.is_some() {
+            let evt_poller = self_.event_poller_thread.as_ref().unwrap();
+
+            if evt_poller.cancelation_requested { return 0; }
+
+            if evt_poller.libinput_event_listener.try_recv().is_ok() {
+                println!("event!!");
+            }
+        }
+
+        1
+    }
+
     pub fn start_polling(&mut self) {
         let (cancel_token_sender, cancel_token_receiver) = mpsc::channel();
         let (libinput_event_listener_sender, libinput_event_listener_receiver) = mpsc::channel();
@@ -286,21 +281,28 @@ impl KinesixBackend
                     if poller.revents == POLLIN {
                         /* Notify main thread that an event is ready and to add it (hopefully) to the event queue */
                         // self.input.instance.dispatch();
-                        libinput_event_listener_sender.send(()).unwrap();
-                        println!("event!!");
+                        libinput_event_listener_sender.send(());
 
                         /* TODO: Get the actual event from the queue and send it for processing */
                     }
                 }
             })),
             cancelation_token: cancel_token_sender,
+            cancelation_requested: false,
             libinput_event_listener: libinput_event_listener_receiver
         });
+
+        unsafe {
+            g_timeout_add_full(200, 1, KinesixBackend::on_event_ready, self as *mut KinesixBackend as *mut libc::c_void, 0 as *mut libc::c_void);
+        }
     }
 
     pub fn stop_polling(&mut self) {
         if self.event_poller_thread.is_some() {
-            self.event_poller_thread.as_ref().unwrap().cancelation_token.send(true).unwrap();
+            let evt_poller = self.event_poller_thread.as_mut().unwrap();
+            evt_poller.cancelation_requested = true;
+            evt_poller.cancelation_token.send(true);
+            evt_poller.join();
         }
     }
 }
@@ -308,7 +310,6 @@ impl KinesixBackend
 impl Drop for KinesixBackend {
     fn drop(&mut self) {
         self.stop_polling();
-        self.event_poller_thread.as_mut().unwrap().join();
     }
 }
 

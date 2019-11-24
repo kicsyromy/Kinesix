@@ -12,6 +12,7 @@ use gtk::{Application, ApplicationWindow, Button};
 mod libkinesix;
 use libkinesix::KinesixBackend;
 use libkinesix::Device;
+use std::borrow::Borrow;
 
 fn swipe(dir: libkinesix::SwipeDirection, finger_count: u32) {
 }
