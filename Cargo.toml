@@ -1,17 +1,17 @@
 [package]
-name = "Kinesix"
+name = "com_github_kicsyromy_kinesix"
 version = "0.1.0"
 authors = ["Romeo Calota <kicsyromy@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-libc = "0.2"
-input = "0.4.1"
+libkinesix = { path = "./libkinesix" }
 
 [dependencies.gtk]
 version = "0.7.0"
 features = ["v3_20"]
 
 [dependencies.gio]
+version = "0.7.0"
 features = ["v2_44"]
 

@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/Kinesix.iml" filepath="$PROJECT_DIR$/Kinesix.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/Kinesix.iml" filepath="$PROJECT_DIR$/.idea/Kinesix.iml" />
     </modules>
   </component>
 </project>

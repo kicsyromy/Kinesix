@@ -1,0 +1,10 @@
+[package]
+name = "libkinesix"
+version = "0.1.0"
+authors = ["Romeo Calota <kicsyromy@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+libc = "0.2"
+input = "0.4.1"
+glib-sys = "0.9.0"

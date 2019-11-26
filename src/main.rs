@@ -6,12 +6,7 @@ use gio::prelude::*;
 
 use gtk::{Application, ApplicationWindow, Button};
 
-//include!("libkinesix.rs");
-//include!("libkinesix_device.rs");
-
-mod libkinesix;
-use libkinesix::KinesixBackend;
-use libkinesix::Device;
+use libkinesix;
 use std::borrow::Borrow;
 
 fn swipe(dir: libkinesix::SwipeDirection, finger_count: u32) {
@@ -22,7 +17,7 @@ fn pinch(t: libkinesix::PinchType, finger_count: u32) {
 
 
 fn main() {
-    let mut b = KinesixBackend::new(swipe, pinch);
+    let mut b = libkinesix::KinesixBackend::new(swipe, pinch);
     let devices = b.get_valid_device_list();
     println!("{:?}", devices);
     b.set_active_device(&devices[0]);

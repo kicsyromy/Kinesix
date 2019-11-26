@@ -17,26 +17,24 @@
  * Author: Romeo Calota
  */
 
-use std::str;
+pub mod device;
 
 use std::fs;
-use std::path::Path;
-
-use std::thread;
-use std::sync::mpsc;
-use std::sync::mpsc::Receiver;
-
+use std::future::Future;
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::io::AsRawFd;
+use std::path::Path;
+use std::str;
+use std::sync::mpsc;
+use std::sync::mpsc::Receiver;
+use std::thread;
+use std::time::Duration;
 
+use input::AsRaw;
 use libc;
 
-mod libkinesix_device;
-pub use libkinesix_device::Device;
-use std::time::Duration;
-use input::AsRaw;
-use std::borrow::{BorrowMut, Borrow};
-use std::future::Future;
+use crate::device::Device;
+use std::borrow::Borrow;
 
 const POLLIN: libc::c_short = 0x1;
 
@@ -59,7 +57,6 @@ extern "C" {
 
     #[no_mangle]
     fn g_timeout_add_full(priority: i32, interval: u32, fun: unsafe extern "C" fn(*mut libc::c_void) -> i32, data: *mut libc::c_void, notify: *mut libc::c_void) -> u32;
-
 }
 
 #[derive(Debug)]
@@ -103,7 +100,7 @@ impl Input {
             instance: input::Libinput::new_from_path(LibInputInterface {}),
             active_device: None,
             swipe_x_max: 0.0,
-            swipe_y_max: 0.0
+            swipe_y_max: 0.0,
         }
     }
 }
@@ -113,7 +110,7 @@ pub struct EventPollerThread
     handle: Option<std::thread::JoinHandle<()>>,
     cancelation_token: mpsc::Sender<bool>,
     cancelation_requested: bool,
-    libinput_event_listener: mpsc::Receiver<()>
+    libinput_event_listener: mpsc::Receiver<()>,
 }
 
 impl EventPollerThread {
@@ -129,13 +126,13 @@ pub enum SwipeDirection
     SWIPE_UP,
     SWIPE_DOWN,
     SWIPE_LEFT,
-    SWIPE_RIGHT
+    SWIPE_RIGHT,
 }
 
 pub enum PinchType
 {
     PINCH_IN,
-    PINCH_OUT
+    PINCH_OUT,
 }
 
 pub enum GestureEventState
@@ -143,14 +140,14 @@ pub enum GestureEventState
     STARTED,
     ONGOING,
     FINISHED,
-    UNKNOWN
+    UNKNOWN,
 }
 
 pub enum GestureType
 {
     SWIPE,
     PINCH,
-    UNKNOWN
+    UNKNOWN,
 }
 
 const DEVICES_PATH: &str = "/dev/input/";
@@ -173,16 +170,14 @@ pub struct KinesixBackend
 impl KinesixBackend
 {
     pub fn new<SwipeDelegate: 'static + FnMut(SwipeDirection, u32), PinchDelegate: 'static + FnMut(PinchType, u32)>(swipe_delegate: SwipeDelegate, pinch_delegate: PinchDelegate) -> KinesixBackend {
-        unsafe {
-            KinesixBackend {
-                active_device: std::ptr::null(),
-                valid_device_list: Vec::new(),
-                swipe_delegate: Box::new(swipe_delegate),
-                pinch_delegate: Box::new(pinch_delegate),
-                gesture_type: GestureType::UNKNOWN,
-                input: Input::new(),
-                event_poller_thread: None
-            }
+        KinesixBackend {
+            active_device: std::ptr::null(),
+            valid_device_list: Vec::new(),
+            swipe_delegate: Box::new(swipe_delegate),
+            pinch_delegate: Box::new(pinch_delegate),
+            gesture_type: GestureType::UNKNOWN,
+            input: Input::new(),
+            event_poller_thread: None,
         }
     }
 
@@ -224,7 +219,7 @@ impl KinesixBackend
             }
         }
 
-        let search_result= self.valid_device_list.binary_search_by(| probe| device.path.cmp(&probe.path));
+        let search_result = self.valid_device_list.binary_search_by(|probe| device.path.cmp(&probe.path));
         if search_result.is_err() { return; }
 
         if self.input.active_device.is_some() {
@@ -240,8 +235,57 @@ impl KinesixBackend
         }
     }
 
+    fn handle_swipe_gesture(&mut self, event: &input::Event) -> i32 {
+        0
+    }
+
+    fn handle_pinch_gesture(&mut self, event: &input::Event) -> i32 {
+        0
+    }
+
+    fn handle_gesture(&mut self, event: &input::Event) {
+        let gesture_event= match event {
+            input::Event::Device(_) => return,
+            input::Event::Keyboard(_) => return,
+            input::Event::Pointer(_) => return,
+            input::Event::Touch(_) => return,
+            input::Event::Tablet(_) => return,
+            input::Event::TabletPad(_) => return,
+            input::Event::Gesture(ev) => ev,
+            input::Event::Switch(_) => return,
+        };
+
+        println!("good event");
+
+//        let finger_count;
+//        let gesture_state;
+//        let gesture_type: GestureType;
+
+//        let (gs, fc) = self.handle_swipe_gesture(event);
+//        if gs != GestureEventState::UNKNOWN {
+//            gesture_type = GestureType::SWIPE;
+//            gesture_state = gs;
+//            finger_count = fc;
+//        } else {
+//            let (gs, fc) = self.handle_pinch_gesture(event);
+//            gesture_type = GestureType::PINCH;
+//            gesture_state = gs;
+//            finger_count = fc;
+//        }
+
+//        if (gesture_state == GestureFinished) && (event.GestureEvent. libinput_event_gesture_get_cancelled(libinput_event_get_gesture_event(event)) == 0))
+//        {
+//            if ((gesture_type == GestureSwipe) && (self->swiped_cb != 0))
+//            self->swiped_cb(self->gesture_type, finger_count, self->swiped_cb_user_data);
+//            if ((gesture_type == GesturePinch) && (self->pinch_cb!= 0))
+//            self->pinch_cb(self->gesture_type, finger_count, self->pinch_cb_user_data);
+//        }
+//
+//        libinput_event_destroy(event);
+    }
+
     unsafe extern "C" fn on_event_ready(data: *mut libc::c_void) -> i32 {
-        let self_ = &*(data as *mut KinesixBackend);
+        let self_ = &mut *(data as *mut KinesixBackend);
 
         if self_.event_poller_thread.is_some() {
             let evt_poller = self_.event_poller_thread.as_ref().unwrap();
@@ -249,7 +293,15 @@ impl KinesixBackend
             if evt_poller.cancelation_requested { return 0; }
 
             if evt_poller.libinput_event_listener.try_recv().is_ok() {
-                println!("event!!");
+                self_.input.instance.dispatch();
+                loop {
+                    let ev = self_.input.instance.next();
+                    if ev.is_some() {
+                        self_.handle_gesture(ev.as_ref().unwrap());
+                    } else {
+                        break;
+                    }
+                }
             }
         }
 
@@ -266,12 +318,17 @@ impl KinesixBackend
                 let mut poller = libc::pollfd {
                     fd: input_fd,
                     events: POLLIN,
-                    revents: 0
+                    revents: 0,
                 };
 
                 loop {
                     let cancelation_requested = cancel_token_receiver.recv_timeout(Duration::new(0, 1000000));
-                    if cancelation_requested.is_ok() { if cancelation_requested.unwrap() { println!("done!"); break; } }
+                    if cancelation_requested.is_ok() {
+                        if cancelation_requested.unwrap() {
+                            println!("done!");
+                            break;
+                        }
+                    }
 
                     unsafe {
                         /* Wait for an event to be ready by polling the internal libinput fd */
@@ -279,8 +336,7 @@ impl KinesixBackend
                     }
 
                     if poller.revents == POLLIN {
-                        /* Notify main thread that an event is ready and to add it (hopefully) to the event queue */
-                        // self.input.instance.dispatch();
+                        /* Notify main thread that an event is ready and to add it to the event queue */
                         libinput_event_listener_sender.send(());
 
                         /* TODO: Get the actual event from the queue and send it for processing */
@@ -289,7 +345,7 @@ impl KinesixBackend
             })),
             cancelation_token: cancel_token_sender,
             cancelation_requested: false,
-            libinput_event_listener: libinput_event_listener_receiver
+            libinput_event_listener: libinput_event_listener_receiver,
         });
 
         unsafe {
@@ -1071,3 +1127,4 @@ impl Drop for KinesixBackend {
 //    }
 //    pthread_exit(0 as *mut libc::c_void);
 //}
+
