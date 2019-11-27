@@ -57,6 +57,9 @@ extern "C" {
 
     #[no_mangle]
     fn g_timeout_add_full(priority: i32, interval: u32, fun: unsafe extern "C" fn(*mut libc::c_void) -> i32, data: *mut libc::c_void, notify: *mut libc::c_void) -> u32;
+
+    #[no_mangle]
+    fn libinput_event_gesture_get_finger_count(gesture_event: *const libc::c_void) -> i32;
 }
 
 #[derive(Debug)]
@@ -135,6 +138,7 @@ pub enum PinchType
     PINCH_OUT,
 }
 
+#[derive(Debug)]
 pub enum GestureEventState
 {
     STARTED,
@@ -143,6 +147,8 @@ pub enum GestureEventState
     UNKNOWN,
 }
 
+
+#[derive(Debug)]
 pub enum GestureType
 {
     SWIPE,
@@ -235,43 +241,70 @@ impl KinesixBackend
         }
     }
 
-    fn handle_swipe_gesture(&mut self, event: &input::Event) -> i32 {
-        0
+    fn handle_swipe_gesture(&mut self, event: &input::event::gesture::GestureSwipeEvent) -> (GestureEventState, i32) {
+        let finger_count;
+        let gesture_state;
+        unsafe {
+            finger_count = libinput_event_gesture_get_finger_count(event.as_raw() as *const libc::c_void);
+        }
+        match event {
+            input::event::gesture::GestureSwipeEvent::Begin(swipe_begin) => {
+                gesture_state = GestureEventState::STARTED;
+            },
+            input::event::gesture::GestureSwipeEvent::Update(swipe_update) => {
+                gesture_state = GestureEventState::ONGOING;
+            },
+            input::event::gesture::GestureSwipeEvent::End(swipe_end) => {
+                gesture_state = GestureEventState::FINISHED;
+            }
+        };
+
+        (gesture_state, finger_count)
     }
 
-    fn handle_pinch_gesture(&mut self, event: &input::Event) -> i32 {
-        0
+    fn handle_pinch_gesture(&mut self, event: &input::event::gesture::GesturePinchEvent) -> (GestureEventState, i32) {
+        let finger_count;
+        let gesture_state;
+        unsafe {
+            finger_count = libinput_event_gesture_get_finger_count(event.as_raw() as *const libc::c_void);
+        }
+        match event {
+            input::event::gesture::GesturePinchEvent::Begin(pinch_begin) => {
+                gesture_state = GestureEventState::STARTED;
+            },
+            input::event::gesture::GesturePinchEvent::Update(pinch_update) => {
+                gesture_state = GestureEventState::ONGOING;
+            },
+            input::event::gesture::GesturePinchEvent::End(pinch_end) => {
+                gesture_state = GestureEventState::FINISHED;
+            }
+        };
+        (gesture_state, finger_count)
     }
 
     fn handle_gesture(&mut self, event: &input::Event) {
-        let gesture_event= match event {
-            input::Event::Device(_) => return,
-            input::Event::Keyboard(_) => return,
-            input::Event::Pointer(_) => return,
-            input::Event::Touch(_) => return,
-            input::Event::Tablet(_) => return,
-            input::Event::TabletPad(_) => return,
-            input::Event::Gesture(ev) => ev,
-            input::Event::Switch(_) => return,
-        };
+        let gesture_state;
+        let finger_count;
+        let gesture_type;
 
-        println!("good event");
+        if let input::Event::Gesture(gesture_event) = event {
+            match gesture_event {
+                input::event::GestureEvent::Pinch(pinch_event) => {
+                    let (gs, fc) = self.handle_pinch_gesture(pinch_event);
+                    gesture_state = gs;
+                    finger_count = fc;
+                    gesture_type = GestureType::PINCH;
+                },
+                input::event::GestureEvent::Swipe(swipe_event) => {
+                    let (gs, fc) = self.handle_swipe_gesture(swipe_event);
+                    gesture_state = gs;
+                    finger_count = fc;
+                    gesture_type = GestureType::SWIPE;
+                }
+            }
 
-//        let finger_count;
-//        let gesture_state;
-//        let gesture_type: GestureType;
-
-//        let (gs, fc) = self.handle_swipe_gesture(event);
-//        if gs != GestureEventState::UNKNOWN {
-//            gesture_type = GestureType::SWIPE;
-//            gesture_state = gs;
-//            finger_count = fc;
-//        } else {
-//            let (gs, fc) = self.handle_pinch_gesture(event);
-//            gesture_type = GestureType::PINCH;
-//            gesture_state = gs;
-//            finger_count = fc;
-//        }
+            println!("{:?}: {:?}: {}", gesture_type, gesture_state, finger_count);
+        }
 
 //        if (gesture_state == GestureFinished) && (event.GestureEvent. libinput_event_gesture_get_cancelled(libinput_event_get_gesture_event(event)) == 0))
 //        {
