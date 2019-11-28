@@ -7,12 +7,13 @@ use gio::prelude::*;
 use gtk::{Application, ApplicationWindow, Button};
 
 use libkinesix;
-use std::borrow::Borrow;
 
-fn swipe(dir: libkinesix::SwipeDirection, finger_count: u32) {
+fn swipe(dir: libkinesix::SwipeDirection, finger_count: i32) {
+    println!("SWIPE: {:?}, {} fingers", dir, finger_count)
 }
 
-fn pinch(t: libkinesix::PinchType, finger_count: u32) {
+fn pinch(t: libkinesix::PinchType, finger_count: i32) {
+    println!("PINCH: {:?}, {} fingers", t, finger_count)
 }
 
 

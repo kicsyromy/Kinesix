@@ -22,6 +22,8 @@ use ::libc;
 /* FIXME: Not thread safe */
 static mut LAST_ASSIGNED_ID: u32 = 0;
 
+#[allow(dead_code)]
+#[allow(non_camel_case_types)]
 enum Access {
     R_OK = 4, /* Test for read permission.  */
     W_OK = 2, /* Test for write permission.  */
@@ -29,6 +31,8 @@ enum Access {
     F_OK = 0  /* Test for existence.  */
 }
 
+#[allow(dead_code)]
+#[allow(non_camel_case_types)]
 enum FileTypes {
     __S_IFMT   = 0o170000, /* These bits determine file type.  */
     __S_IFDIR  = 0o040000, /* Directory.  */
