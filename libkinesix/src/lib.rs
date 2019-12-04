@@ -333,6 +333,9 @@ impl KinesixBackend
 
     fn create_device(&mut self, device_path: &str) -> Option<Device> {
         unsafe {
+            // HACK: For some reason when passing a string into C land it has some junk on the end
+            //       so we allocate a new buffer where we copy .len() bytes into and pass it along
+            //       to the function that takes a char *
             let mut device_path_vec: Vec<libc::c_char> = Vec::new();
             device_path_vec.resize(device_path.len() + 1, 0);
             let device_path_cstr = strncpy(device_path_vec.as_mut_ptr(), device_path.as_ptr() as *const libc::c_char, device_path.len());
@@ -344,9 +347,9 @@ impl KinesixBackend
                     let product_id = libinput_device_get_id_product(libinput_dev);
                     let vendor_id = libinput_device_get_id_vendor(libinput_dev);
                     return Device::new(device_path, device_name, product_id, vendor_id);
-                } else {
-                    libinput_path_remove_device(libinput_dev);
                 }
+
+                libinput_path_remove_device(libinput_dev);
             }
         }
 
@@ -392,6 +395,9 @@ impl KinesixBackend
         }
 
         unsafe {
+            // HACK: For some reason when passing a string into C land it has some junk on the end
+            //       so we allocate a new buffer where we copy .len() bytes into and pass it along
+            //       to the function that takes a char *
             let mut device_path_vec: Vec<libc::c_char> = Vec::new();
             device_path_vec.resize(device.path.len() + 1, 0);
             let device_path_cstr = strncpy(device_path_vec.as_mut_ptr(), device.path.as_str().as_ptr() as *const libc::c_char, device.path.len());

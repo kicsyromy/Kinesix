@@ -25,7 +25,7 @@ fn main() {
     b.start_polling();
 
     let application = Application::new(
-        Some("com.github.gtk-rs.examples.basic"),
+        Some("com.github.kicsyromy.kinesix"),
         Default::default(),
     ).expect("failed to initialize GTK application");
 
