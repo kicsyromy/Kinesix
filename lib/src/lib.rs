@@ -320,6 +320,15 @@ pub struct KinesixBackend
 impl KinesixBackend
 {
     pub fn new<SwipeDelegate: 'static + FnMut(SwipeDirection, i32), PinchDelegate: 'static + FnMut(PinchType, i32)>(swipe_delegate: SwipeDelegate, pinch_delegate: PinchDelegate) -> KinesixBackend {
+        let mut vi = virtualinput::VirtualInput::new("dummy");
+        if vi.is_ok() {
+            let result = vi.ok().unwrap().press(vec![virtualinput::Key::LeftShift, virtualinput::Key::A].borrow(), true);
+            if !result.is_ok() {
+                println!("{}", result.err().unwrap());
+            }
+        } else {
+            println!("{}", vi.err().unwrap());
+        }
         KinesixBackend {
             active_device: std::ptr::null(),
             valid_device_list: Vec::new(),
