@@ -6,19 +6,19 @@ use gio::prelude::*;
 
 use gtk::{Application, ApplicationWindow, Button};
 
-use libkinesix;
+use kinesix;
 
-fn swipe(dir: libkinesix::SwipeDirection, finger_count: i32) {
+fn swipe(dir: kinesix::SwipeDirection, finger_count: i32) {
     println!("SWIPE: {:?}, {} fingers", dir, finger_count)
 }
 
-fn pinch(t: libkinesix::PinchType, finger_count: i32) {
+fn pinch(t: kinesix::PinchType, finger_count: i32) {
     println!("PINCH: {:?}, {} fingers", t, finger_count)
 }
 
 
 fn main() {
-    let mut b = libkinesix::KinesixBackend::new(swipe, pinch);
+    let mut b = kinesix::KinesixBackend::new(swipe, pinch);
     let devices = b.get_valid_device_list();
     println!("{:?}", devices);
     b.set_active_device(&devices[0]);

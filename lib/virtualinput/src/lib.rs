@@ -1,3 +1,23 @@
+
+/*
+ * Copyright © 2019 Romeo Calota
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2 of the licence, or (at your option) any later version.
+ *
+ * This software is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this program; if not, see <http://www.gnu.org/licenses/>.
+ *
+ * Author: Romeo Calota
+ */
+
 mod errno;
 mod evdev_uinput;
 
@@ -32,10 +52,10 @@ extern "C" {
     fn strncpy(destination: *mut c_char, source: *const c_char, length: usize) -> *mut c_char;
 }
 
-fn main() {
+fn test() {
     unsafe {
         let device = libevdev_new();
-        libevdev_set_name(device, "virtkbd".as_ptr() as *const c_char);
+        libevdev_set_name(device, "virtkbd\0".as_ptr() as *const c_char);
 
         libevdev_enable_event_type(device, EV_KEY);
         libevdev_enable_event_code(device, EV_KEY, KEY_A, 0 as *const c_void);

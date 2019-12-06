@@ -1,9 +1,7 @@
 [package]
-name = "libkinesix"
+name = "virtualinput"
 version = "0.1.0"
 authors = ["Romeo Calota <kicsyromy@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-libc = "0.2"
-glib-sys = "0.9.0"
