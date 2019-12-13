@@ -29,7 +29,7 @@ use libc;
 
 use crate::device::Device;
 use std::borrow::Borrow;
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr};
 
 const POLLIN: libc::c_short = 0x1;
 
@@ -320,7 +320,7 @@ pub struct KinesixBackend
 impl KinesixBackend
 {
     pub fn new<SwipeDelegate: 'static + FnMut(SwipeDirection, i32), PinchDelegate: 'static + FnMut(PinchType, i32)>(swipe_delegate: SwipeDelegate, pinch_delegate: PinchDelegate) -> KinesixBackend {
-        let mut vi = virtualinput::VirtualInput::new("dummy");
+        let vi = virtualinput::VirtualInput::new("dummy");
         if vi.is_ok() {
             let result = vi.ok().unwrap().press(vec![virtualinput::Key::LeftShift, virtualinput::Key::A].borrow(), true);
             if !result.is_ok() {

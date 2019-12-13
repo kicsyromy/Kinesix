@@ -96,9 +96,9 @@ impl Device
             /* Check if file exists */
             let file_exists = access(path.as_ptr(), Access::F_OK as libc::c_int) != (-1 as libc::c_int);
 
-            let mut sb: stat = std::mem::uninitialized();
-            if file_exists && lstat(path.as_ptr(), &mut sb) != (-1 as libc::c_int) {
-                if sb.st_mode & FileTypes::__S_IFMT as libc::c_uint == FileTypes::__S_IFCHR as libc::c_uint {
+            let mut sb = std::mem::MaybeUninit::<stat>::uninit();
+            if file_exists && lstat(path.as_ptr(), sb.as_mut_ptr()) != (-1 as libc::c_int) {
+                if sb.assume_init().st_mode & FileTypes::__S_IFMT as libc::c_uint == FileTypes::__S_IFCHR as libc::c_uint {
                     let device = Device { id, path, name, product_id, vendor_id };
                     return Some(device);
                 }

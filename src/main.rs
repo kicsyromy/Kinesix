@@ -3,8 +3,9 @@ extern crate gio;
 
 use gtk::prelude::*;
 use gio::prelude::*;
+use gio::ApplicationFlags;
 
-use gtk::{Application, ApplicationWindow, Button};
+use gtk::*;
 
 use kinesix;
 
@@ -16,7 +17,6 @@ fn pinch(t: kinesix::PinchType, finger_count: i32) {
     println!("PINCH: {:?}, {} fingers", t, finger_count)
 }
 
-
 fn main() {
     let mut b = kinesix::KinesixBackend::new(swipe, pinch);
     let devices = b.get_valid_device_list();
@@ -26,23 +26,30 @@ fn main() {
 
     let application = Application::new(
         Some("com.github.kicsyromy.kinesix"),
-        Default::default(),
-    ).expect("failed to initialize GTK application");
+        ApplicationFlags::empty()
+    ).expect("Failed to create application instance");
 
-    application.connect_activate(|app| {
-        let window = ApplicationWindow::new(app);
-        window.set_title("First GTK+ Program");
-        window.set_default_size(350, 70);
+    let mut main_window = Window::new(WindowType::Toplevel);
 
-        let button = Button::new_with_label("Click me!");
-        button.connect_clicked(|_| {
-            println!("Clicked!");
-        });
-        window.add(&button);
+    let device_chooser = ComboBox::new();
 
-        window.show_all();
+    let header = HeaderBar::new();
+    header.set_title(Some("Kinesix"));
+//    header.set_subtitle(Some("<Selected device goes here>"));
+//    header.set_has_subtitle(true);
+    header.set_show_close_button(true);
+    header.pack_end(&device_chooser);
+
+    main_window.set_titlebar(Some(&header));
+
+    let window_ptr = &main_window as *const Window as *const ::std::os::raw::c_void as usize;
+    application.connect_activate(move |app| {
+        let window = unsafe { &(*(window_ptr as *mut Window)) };
+        app.add_window(window);
     });
 
+    main_window.show_all();
+//    application.hold();
     application.run(&[]);
 }
 
